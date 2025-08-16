@@ -57,8 +57,17 @@ def objective_factory(X_train, y_train, X_valid, y_valid):
 
             mlflow.log_metrics({"val_accuracy": acc, "val_roc_auc": auc, "train_time_s": train_time})
 
-            # Save model artifact for this trial (optional)
-            mlflow.sklearn.log_model(model, artifact_path="model")
+            # ⚡ Fixed MLflow model logging for trial
+            example_input = pd.DataFrame(
+                X_train[:5],
+                columns=[f"feature_{i}" for i in range(X_train.shape[1])]
+            )
+
+            mlflow.sklearn.log_model(
+                model,
+                name=f"trial_model_{trial.number}",  # unique name per trial
+                input_example=example_input          # schema inference
+            )
 
             # Optuna minimizes, so return negative AUC to maximize AUC
             return -auc
