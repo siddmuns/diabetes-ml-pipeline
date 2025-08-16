@@ -32,39 +32,30 @@ def objective_factory(X_train, y_train, X_valid, y_valid):
         max_depth = trial.suggest_int("max_depth", 1, 10)
         n_estimators = trial.suggest_int("n_estimators", 50, 400)
 
-        params = {
-            "learning_rate": learning_rate,
-            "max_depth": max_depth,
-            "n_estimators": n_estimators
-        }
-
-        model = GradientBoostingClassifier(
-            learning_rate=learning_rate,
-            max_depth=max_depth,
-            n_estimators=n_estimators,
-            random_state=42
-        )
-
-        start = time.time()
-        model.fit(X_train, y_train)
-        train_time = time.time() - start
-
-        # Evaluate on validation set
-        y_prob = model.predict_proba(X_valid)[:, 1]
-        y_pred = model.predict(X_valid)
-        acc = accuracy_score(y_valid, y_pred)
-        auc = roc_auc_score(y_valid, y_prob)
-
-        # Manual MLflow logging for each trial
-        with mlflow.start_run(nested=True, run_name=f"trial_{trial.number}"):
+        with mlflow.start_run(nested=True):
+            params = {"learning_rate": learning_rate, "max_depth": max_depth, "n_estimators": n_estimators}
             mlflow.log_params(params)
-            mlflow.log_metrics({
-                "val_accuracy": acc,
-                "val_roc_auc": auc,
-                "train_time_s": train_time
-            })
 
-            # Log model with signature and example input
+            model = GradientBoostingClassifier(
+                learning_rate=learning_rate,
+                max_depth=max_depth,
+                n_estimators=n_estimators,
+                random_state=42
+            )
+
+            start = time.time()
+            model.fit(X_train, y_train)
+            train_time = time.time() - start
+
+            # Evaluate on validation set
+            y_prob = model.predict_proba(X_valid)[:, 1]
+            y_pred = model.predict(X_valid)
+            acc = accuracy_score(y_valid, y_pred)
+            auc = roc_auc_score(y_valid, y_prob)
+
+            mlflow.log_metrics({"val_accuracy": acc, "val_roc_auc": auc, "train_time_s": train_time})
+
+            # Proper MLflow logging with signature
             example_input = pd.DataFrame(X_train[:5], columns=[f"feature_{i}" for i in range(X_train.shape[1])])
             signature = infer_signature(X_train, model.predict(X_train))
             mlflow.sklearn.log_model(
@@ -74,13 +65,21 @@ def objective_factory(X_train, y_train, X_valid, y_valid):
                 signature=signature
             )
 
-        return -auc  # Optuna minimizes, so negative AUC maximizes
+            return -auc  # Optuna minimizes, negative AUC maximizes
 
     return objective
 
 
 def run_optuna(X_train, y_train, X_valid, y_valid, n_trials=25, study_name="diabetes_study"):
     study = optuna.create_study(direction="minimize", study_name=study_name)
+    
+    # Disable Optuna automatic MLflow logging to prevent warnings
+    try:
+        import optuna.integration.mlflow
+        optuna.integration.mlflow.mlflow_enabled = False
+    except ImportError:
+        pass  # If Optuna MLflow integration not installed, ignore
+
     objective = objective_factory(X_train, y_train, X_valid, y_valid)
     study.optimize(objective, n_trials=n_trials)
     print("Optuna best trial:", study.best_trial.params, "best value:", -study.best_value)
@@ -105,16 +104,11 @@ def retrain_final_and_log(X_train_full, y_train_full, X_test, y_test, best_param
     joblib.dump(model, model_path)
     print(f"Final model saved to {model_path}")
 
-    # Log final model to MLflow
+    # Log to MLflow if run active
     if mlflow.active_run() is not None:
         example_input = pd.DataFrame(X_train_full[:5], columns=[f"feature_{i}" for i in range(X_train_full.shape[1])])
         signature = infer_signature(X_train_full, model.predict(X_train_full))
-        mlflow.sklearn.log_model(
-            model,
-            name="final_model",
-            input_example=example_input,
-            signature=signature
-        )
+        mlflow.sklearn.log_model(model, name="final_model", input_example=example_input, signature=signature)
 
     return model, test_acc, test_auc, train_time, model_path
 
@@ -162,6 +156,11 @@ if __name__ == "__main__":
             "test_roc_auc": float(test_auc),
             "train_time_s": float(train_time)
         })
+
+        # Final model logging with signature
+        example_input = pd.DataFrame(X_train_full[:5], columns=[f"feature_{i}" for i in range(X_train_full.shape[1])])
+        signature = infer_signature(X_train_full, model.predict(X_train_full))
+        mlflow.sklearn.log_model(model, name="final_model", input_example=example_input, signature=signature)
 
         run_id = final_run.info.run_id
         print("Final run id:", run_id)
