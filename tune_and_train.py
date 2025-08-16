@@ -55,7 +55,7 @@ def objective_factory(X_train, y_train, X_valid, y_valid):
 
             mlflow.log_metrics({"val_accuracy": acc, "val_roc_auc": auc, "train_time_s": train_time})
 
-            # MLflow logging with example input and signature
+            # Proper MLflow logging with signature
             example_input = pd.DataFrame(X_train[:5], columns=[f"feature_{i}" for i in range(X_train.shape[1])])
             signature = infer_signature(X_train, model.predict(X_train))
             mlflow.sklearn.log_model(
@@ -162,5 +162,3 @@ if __name__ == "__main__":
     register_model_mlflow(run_id, client, model_name="Diabetes_GB_Model")
 
     print("Done. Artifacts in artifacts/, mlruns/")
-
-
