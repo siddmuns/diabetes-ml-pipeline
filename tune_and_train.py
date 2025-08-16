@@ -2,15 +2,14 @@
 import os
 import time
 import joblib
-import json
 import numpy as np
 import optuna
 import mlflow
 import mlflow.sklearn
 import pandas as pd
-
 from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.metrics import accuracy_score, roc_auc_score
+from mlflow.models.signature import infer_signature
 from mlflow import MlflowClient
 
 
@@ -25,8 +24,7 @@ def setup_mlflow(local_dir="mlruns", experiment_name="Diabetes_Pipeline"):
 
 def objective_factory(X_train, y_train, X_valid, y_valid):
     """
-    Returns an objective function that captures training/validation data closures.
-    Used by Optuna to perform hyperparameter tuning with nested MLflow runs.
+    Returns an objective function for Optuna with MLflow logging.
     """
     def objective(trial):
         # Suggest hyperparameters
@@ -57,20 +55,17 @@ def objective_factory(X_train, y_train, X_valid, y_valid):
 
             mlflow.log_metrics({"val_accuracy": acc, "val_roc_auc": auc, "train_time_s": train_time})
 
-            # ⚡ Fixed MLflow model logging for trial
-            example_input = pd.DataFrame(
-                X_train[:5],
-                columns=[f"feature_{i}" for i in range(X_train.shape[1])]
-            )
-
+            # MLflow logging with example input and signature
+            example_input = pd.DataFrame(X_train[:5], columns=[f"feature_{i}" for i in range(X_train.shape[1])])
+            signature = infer_signature(X_train, model.predict(X_train))
             mlflow.sklearn.log_model(
                 model,
-                name=f"trial_model_{trial.number}",  # unique name per trial
-                input_example=example_input          # schema inference
+                name=f"trial_model_{trial.number}",
+                input_example=example_input,
+                signature=signature
             )
 
-            # Optuna minimizes, so return negative AUC to maximize AUC
-            return -auc
+            return -auc  # Optuna minimizes, negative AUC maximizes
 
     return objective
 
@@ -87,7 +82,6 @@ def retrain_final_and_log(X_train_full, y_train_full, X_test, y_test, best_param
     os.makedirs(artifacts_dir, exist_ok=True)
     model = GradientBoostingClassifier(random_state=42, **best_params)
 
-    import time
     start = time.time()
     model.fit(X_train_full, y_train_full)
     train_time = time.time() - start
@@ -102,21 +96,13 @@ def retrain_final_and_log(X_train_full, y_train_full, X_test, y_test, best_param
     joblib.dump(model, model_path)
     print(f"Final model saved to {model_path}")
 
-    # ⚡ Log to MLflow if a run is active
-    import mlflow
+    # Log to MLflow if run active
     if mlflow.active_run() is not None:
-        example_input = pd.DataFrame(
-            X_train_full[:5],
-            columns=[f"feature_{i}" for i in range(X_train_full.shape[1])]
-        )
-        mlflow.sklearn.log_model(
-            model,
-            name="final_model",
-            input_example=example_input
-        )
+        example_input = pd.DataFrame(X_train_full[:5], columns=[f"feature_{i}" for i in range(X_train_full.shape[1])])
+        signature = infer_signature(X_train_full, model.predict(X_train_full))
+        mlflow.sklearn.log_model(model, name="final_model", input_example=example_input, signature=signature)
 
     return model, test_acc, test_auc, train_time, model_path
-
 
 
 def register_model_mlflow(model_run_id, mlflow_client, model_name="Diabetes_GB_Model"):
@@ -136,18 +122,13 @@ def register_model_mlflow(model_run_id, mlflow_client, model_name="Diabetes_GB_M
 if __name__ == "__main__":
     # Load pre-split data
     splits = np.load("artifacts/splits.npz", allow_pickle=True)
-    X_train = splits["X_train"]
-    X_valid = splits["X_valid"]
-    X_test = splits["X_test"]
-    y_train = splits["y_train"]
-    y_valid = splits["y_valid"]
-    y_test = splits["y_test"]
-    feature_names = list(splits["feature_names"])
+    X_train, X_valid, X_test = splits["X_train"], splits["X_valid"], splits["X_test"]
+    y_train, y_valid, y_test = splits["y_train"], splits["y_valid"], splits["y_test"]
 
     # Setup MLflow
     setup_mlflow(local_dir="mlruns", experiment_name="Diabetes_Pipeline")
 
-    # Run Optuna hyperparameter search
+    # Run Optuna
     study = run_optuna(X_train, y_train, X_valid, y_valid, n_trials=20)
     best_params = study.best_trial.params
     print("Best params (Optuna):", best_params)
@@ -161,7 +142,6 @@ if __name__ == "__main__":
             X_train_full, y_train_full, X_test, y_test, best_params, artifacts_dir="artifacts"
         )
 
-        # Log parameters and metrics
         mlflow.log_params(best_params)
         mlflow.log_metrics({
             "test_accuracy": float(test_acc),
@@ -169,23 +149,15 @@ if __name__ == "__main__":
             "train_time_s": float(train_time)
         })
 
-        # ⚡ Create example input for MLflow schema inference
-        example_input = pd.DataFrame(
-            X_train_full[:5],
-            columns=[f"feature_{i}" for i in range(X_train_full.shape[1])]
-        )
-
-        # ⚡ Log the final model correctly
-        mlflow.sklearn.log_model(
-            model,
-            name="final_model",        # fixed from artifact_path
-            input_example=example_input
-        )
+        # Final model logging with signature
+        example_input = pd.DataFrame(X_train_full[:5], columns=[f"feature_{i}" for i in range(X_train_full.shape[1])])
+        signature = infer_signature(X_train_full, model.predict(X_train_full))
+        mlflow.sklearn.log_model(model, name="final_model", input_example=example_input, signature=signature)
 
         run_id = final_run.info.run_id
         print("Final run id:", run_id)
 
-    # Attempt to register model in MLflow Model Registry
+    # Attempt model registry
     client = MlflowClient()
     register_model_mlflow(run_id, client, model_name="Diabetes_GB_Model")
 
