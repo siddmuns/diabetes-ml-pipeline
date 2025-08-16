@@ -11,7 +11,10 @@ from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.metrics import accuracy_score, roc_auc_score
 from mlflow.models.signature import infer_signature
 from mlflow import MlflowClient
+import warnings
 
+# Suppress MLflow warnings from Optuna auto-logging
+warnings.filterwarnings("ignore", category=UserWarning, module="mlflow")
 
 def setup_mlflow(local_dir="mlruns", experiment_name="Diabetes_Pipeline"):
     os.makedirs(local_dir, exist_ok=True)
@@ -32,6 +35,7 @@ def objective_factory(X_train, y_train, X_valid, y_valid):
         max_depth = trial.suggest_int("max_depth", 1, 10)
         n_estimators = trial.suggest_int("n_estimators", 50, 400)
 
+        # Manual MLflow run logging
         with mlflow.start_run(nested=True):
             params = {"learning_rate": learning_rate, "max_depth": max_depth, "n_estimators": n_estimators}
             mlflow.log_params(params)
@@ -162,3 +166,4 @@ if __name__ == "__main__":
     register_model_mlflow(run_id, client, model_name="Diabetes_GB_Model")
 
     print("Done. Artifacts in artifacts/, mlruns/")
+
