@@ -84,29 +84,39 @@ def run_optuna(X_train, y_train, X_valid, y_valid, n_trials=25, study_name="diab
 
 
 def retrain_final_and_log(X_train_full, y_train_full, X_test, y_test, best_params, artifacts_dir="artifacts"):
-    """
-    Retrain final model on full train+valid set and evaluate on test set.
-    Returns model, test metrics, training time, and local model path.
-    """
     os.makedirs(artifacts_dir, exist_ok=True)
     model = GradientBoostingClassifier(random_state=42, **best_params)
-    
+
+    import time
     start = time.time()
     model.fit(X_train_full, y_train_full)
     train_time = time.time() - start
 
-    # Evaluate on test
     y_pred_test = model.predict(X_test)
     y_prob_test = model.predict_proba(X_test)[:, 1]
     test_acc = accuracy_score(y_test, y_pred_test)
     test_auc = roc_auc_score(y_test, y_prob_test)
 
-    # Save model locally
+    # Save locally
     model_path = os.path.join(artifacts_dir, "gb_final_model.pkl")
     joblib.dump(model, model_path)
-
     print(f"Final model saved to {model_path}")
+
+    # ⚡ Log to MLflow if a run is active
+    import mlflow
+    if mlflow.active_run() is not None:
+        example_input = pd.DataFrame(
+            X_train_full[:5],
+            columns=[f"feature_{i}" for i in range(X_train_full.shape[1])]
+        )
+        mlflow.sklearn.log_model(
+            model,
+            name="final_model",
+            input_example=example_input
+        )
+
     return model, test_acc, test_auc, train_time, model_path
+
 
 
 def register_model_mlflow(model_run_id, mlflow_client, model_name="Diabetes_GB_Model"):
