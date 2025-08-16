@@ -165,10 +165,10 @@ if __name__ == "__main__":
             columns=[f"feature_{i}" for i in range(X_train_full.shape[1])]
         )
 
-        # Log the final model with input_example
+        # ⚡ Log the final model correctly
         mlflow.sklearn.log_model(
             model,
-            artifact_path="final_model",
+            name="final_model",        # fixed from artifact_path
             input_example=example_input
         )
 
@@ -180,4 +180,5 @@ if __name__ == "__main__":
     register_model_mlflow(run_id, client, model_name="Diabetes_GB_Model")
 
     print("Done. Artifacts in artifacts/, mlruns/")
+
 
