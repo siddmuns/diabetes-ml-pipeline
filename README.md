@@ -22,7 +22,6 @@ This repository contains an end-to-end Diabetes prediction ML pipeline implement
 
 ## Quick start (Colab)
 
-1. Upload `diabetes.csv` and `diabetes2.csv` to Colab.
-2. Install dependencies:
-   ```bash
-   !pip install -q -r requirements.txt
+1. Go to "Open Notebook" on Goole Colab.
+2. On the Github section, write my username "siddmuns" and find this repository.
+3. Once it shows the .ipynb file, open it and run.
