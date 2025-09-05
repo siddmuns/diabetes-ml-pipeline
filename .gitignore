@@ -1,14 +1,32 @@
 # Python
 __pycache__/
-*.pyc
+*.py[cod]
 *.pyo
 *.pyd
+*.pyc
 .env
 venv/
 env/
-.ipynb_checkpoints
+.env/
+.ipynb_checkpoints/
 
-# Artifacts / logs / mlruns
+# IDE / Editor
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Test / build / coverage
+.pytest_cache/
+coverage/
+htmlcov/
+.tox/
+
+# Type checkers / caches
+.mypy_cache/
+.pyre/
+
+# Artifacts / logs / mlruns (do NOT commit trained models or runs)
 artifacts/
 mlruns/
 *.pkl
