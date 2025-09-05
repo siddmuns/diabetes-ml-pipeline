@@ -22,5 +22,4 @@ def batch_predict(model_path, scaler_path, input_csv, output_csv, id_col="Patien
     return out
 
 if __name__ == "__main__":
-    out = batch_predict("artifacts/gb_final_model.pkl", "artifacts/scaler.pkl", "diabetes2.csv", "artifacts/predictions.csv")
-    print(out.head())
+    batch_predict("artifacts/gb_final_model.pkl", "artifacts/scaler.pkl", "diabetes2.csv", "artifacts/predictions.csv")
