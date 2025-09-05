@@ -71,19 +71,21 @@ def objective_factory(X_train, y_train, X_valid, y_valid):
 
 
 def run_optuna(X_train, y_train, X_valid, y_valid, n_trials=25, study_name="diabetes_study"):
+    # use the global optuna (imported at top of file)
     study = optuna.create_study(direction="minimize", study_name=study_name)
 
     # Disable Optuna automatic MLflow logging safely
     try:
-        import optuna.integration.mlflow
-        optuna.integration.mlflow.mlflow_enabled = False
-    except Exception:
+        import optuna.integration.mlflow as optuna_mlflow
+        optuna_mlflow.mlflow_enabled = False
+    except ImportError:
         pass  
 
     objective = objective_factory(X_train, y_train, X_valid, y_valid)
     study.optimize(objective, n_trials=n_trials)
     print("Optuna best trial:", study.best_trial.params, "best value:", -study.best_value)
     return study
+
 
 
 def retrain_final_and_log(X_train_full, y_train_full, X_test, y_test, best_params, artifacts_dir="artifacts"):
