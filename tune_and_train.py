@@ -52,7 +52,7 @@ def run_random_search(X_train, y_train,
         cv=cv,
         random_state=random_state,
         n_jobs=n_jobs,
-        verbose=1,
+        verbose=2,
         return_train_score=False
     )
 
