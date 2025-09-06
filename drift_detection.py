@@ -1,49 +1,46 @@
 # drift_detection.py
 import os
-import json
 import pandas as pd
-import matplotlib.pyplot as plt
-from scipy.stats import ks_2samp
 import mlflow
+from scipy.stats import ks_2samp
 
-def detect_and_log_drift(ref_csv, new_csv, id_col="PatientID", target_col="Diabetic", out_dir="artifacts"):
+def detect_and_log_drift(train_csv, new_csv, out_dir="artifacts"):
+    """
+    Detects drift between training and new datasets using KS test.
+    Logs results into MLflow and saves a CSV report locally.
+    """
     os.makedirs(out_dir, exist_ok=True)
-    df_ref = pd.read_csv(ref_csv)
+
+    # Load datasets
+    df_train = pd.read_csv(train_csv)
     df_new = pd.read_csv(new_csv)
 
-    features = [c for c in df_ref.columns if c not in [id_col, target_col]]
+    # Run KS test per column
+    results = []
+    for col in df_train.columns:
+        if col in df_new.columns:
+            stat, p_value = ks_2samp(df_train[col], df_new[col])
+            drifted = p_value < 0.05
+            results.append({"feature": col, "stat": stat, "p_value": p_value, "drifted": drifted})
 
-    drift_report = {}
-    mlflow.set_experiment("Diabetes_Pipeline")
-    with mlflow.start_run(run_name="Drift_Report"):
-        for feat in features:
-            s1 = df_ref[feat].dropna()
-            s2 = df_new[feat].dropna()
-            stat, pvalue = ks_2samp(s1, s2)
-            drift_report[feat] = {"ks_stat": float(stat), "p_value": float(pvalue)}
+    rpt = pd.DataFrame(results)
 
-            fig, ax = plt.subplots()
-            ax.hist(s1, bins=25, alpha=0.5, label="ref")
-            ax.hist(s2, bins=25, alpha=0.5, label="new")
-            ax.set_title(f"{feat} (KS={stat:.3f}, p={pvalue:.3f})")
-            ax.legend()
-            fig_path = os.path.join(out_dir, f"drift_{feat}.png")
-            fig.savefig(fig_path)
-            plt.close(fig)
-            mlflow.log_artifact(fig_path, artifact_path=f"drift_plots/{feat}")
+    # Save report locally
+    out_csv = os.path.join(out_dir, "drift_report.csv")
+    rpt.to_csv(out_csv, index=False)
 
-        # save report artifact
-        report_path = os.path.join(out_dir, "drift_report.json")
-        with open(report_path, "w") as f:
-            json.dump(drift_report, f, indent=2)
-        mlflow.log_artifact(report_path, artifact_path="drift_report")
+    # Log safe metrics
+    num_drifted = rpt["drifted"].sum()
+    mlflow.log_metric("num_features_drifted", int(num_drifted))
+    mlflow.log_metric("total_features", int(len(rpt)))
+    mlflow.log_metric("drift_fraction", float(num_drifted) / max(1, len(rpt)))
 
-        # summary metric
-        drifted = sum(1 for v in drift_report.values() if v["p_value"] < 0.05)
-        mlflow.log_metric("num_features_drifted_p<0.05", drifted)
+    # log drift stats for each feature
+    for _, row in rpt.iterrows():
+        safe_name = f"drift_pvalue_{row['feature']}".replace(" ", "_")
+        mlflow.log_metric(safe_name, row["p_value"])
 
-    print(f"Drift report saved to {report_path}")
-    return drift_report
+    mlflow.log_artifact(out_csv)
 
-if __name__ == "__main__":
-    detect_and_log_drift("diabetes.csv", "diabetes2.csv", out_dir="artifacts")
+    print(f"Drift detection complete. {num_drifted}/{len(rpt)} features drifted.")
+    return rpt
