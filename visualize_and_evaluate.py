@@ -6,7 +6,7 @@ import mlflow
 import mlflow.sklearn
 from sklearn.metrics import RocCurveDisplay, confusion_matrix, ConfusionMatrixDisplay
 
-def make_plots_and_log(model, X_test, y_test, feature_names, run_name="Final_Plots"):
+def make_plots_and_log(model, X_test, y_test, feature_names, run_name="Final_Plots", nested="True"):
     mlflow.set_experiment("Diabetes_Pipeline")
     with mlflow.start_run(run_name=run_name):
         y_prob = model.predict_proba(X_test)[:, 1]
